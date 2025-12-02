@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<!-- iPad用PWA設定 & ビューポート設定 -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="iPad HTML Editor">
+<title>iPad HTML Editor</title>
+
+<style>
+  /* --- 基本リセット & レイアウト --- */
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0; padding: 0;
+    background-color: #111827; /* gray-900 */
+    color: white;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    height: 100dvh; /* モバイルのアドレスバー対策 */
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding-top: env(safe-area-inset-top); /* ノッチ対策 */
+  }
+
+  /* --- アイコン類 (SVGの代わり) --- */
+  .icon { width: 1.2rem; height: 1.2rem; display: inline-block; vertical-align: middle; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  
+  /* --- ヘッダー --- */
+  header {
+    background-color: #1f2937; /* gray-800 */
+    border-bottom: 1px solid #374151; /* gray-700 */
+    padding: 0.5rem 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 3.5rem;
+    flex-shrink: 0;
+    z-index: 20;
+    gap: 10px;
+  }
+  .app-title { 
+    font-weight: bold; 
+    font-size: 1.125rem; 
+    display: flex; 
+    align-items: center; 
+    gap: 0.5rem; 
+    white-space: nowrap; /* タイトルが折り返されないようにする */
+  }
+  .app-title svg { color: #60a5fa; /* blue-400 */ }
+  
+  /* ファイル名入力 */
+  .file-input-group { 
+    display: flex; 
+    align-items: center; 
+    gap: 0.5rem; 
+    margin: 0 0.5rem; 
+    flex: 1; 
+    max-width: 200px;
+    min-width: 100px; 
+  }
+  #fileNameInput {
+    background-color: #374151;
+    border: 1px solid #4b5563;
+    color: white;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    width: 100%;
+    font-size: 0.875rem;
+    outline: none;
+  }
+
+  /* ボタン群 */
+  .btn-group { display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0; }
+  .btn {
+    background-color: #374151;
+    border: none;
+    color: white;
+    padding: 0.4rem 0.8rem;
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    transition: background-color 0.2s;
+    white-space: nowrap; /* ボタン文字が折り返されないようにする */
+  }
+  .btn:active { transform: scale(0.96); }
+  .btn-primary { background-color: #2563eb; /* blue-600 */ }
+  .btn-icon-only { padding: 0.4rem; }
+  
+  /* --- ツールバー (検索 & ショートカット) --- */
+  .toolbar {
+    background-color: #1f2937;
+    border-bottom: 1px solid #374151;
+    height: 3rem;
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    z-index: 10;
+  }
+  
+  /* 左側: ショートカット/検索結果 */
+  .toolbar-left {
+    flex: 4; /* 40% */
+    height: 100%;
+    display: flex;
+    align-items: center;
+    overflow-x: auto;
+    padding: 0 0.5rem;
+    gap: 0.5rem;
+    border-right: 1px solid #374151;
+    scrollbar-width: none; /* Firefox */
+  }
+  .toolbar-left::-webkit-scrollbar { display: none; } /* Chrome/Safari */
+
+  .tag-btn {
+    background-color: #374151;
+    border: 1px solid #4b5563;
+    color: #93c5fd; /* blue-300 */
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    font-family: monospace;
+    font-size: 0.875rem;
+    white-space: nowrap;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .tag-desc { color: #9ca3af; font-size: 0.75rem; border-left: 1px solid #4b5563; padding-left: 0.5rem; font-family: sans-serif; }
+
+  /* 右側: 検索バー */
+  .toolbar-right {
+    flex: 6; /* 60% */
+    height: 100%;
+    display: flex;
+    align-items: center;
+    padding: 0 0.5rem;
+    position: relative;
+  }
+  .search-icon { position: absolute; left: 1rem; color: #9ca3af; pointer-events: none; }
+  .clear-icon { position: absolute; right: 1rem; color: #9ca3af; cursor: pointer; }
+  #searchInput {
+    width: 100%;
+    background-color: #111827;
+    border: 1px solid #374151;
+    color: white;
+    padding: 0.4rem 2rem 0.4rem 2rem;
+    border-radius: 0.25rem;
+    font-size: 0.875rem;
+    outline: none;
+  }
+
+  /* --- メインエリア --- */
+  .main-area { flex: 1; display: flex; overflow: hidden; position: relative; }
+  
+  .editor-pane, .preview-pane {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  
+  /* モバイル表示切替用クラス */
+  .hidden-mobile { display: none; }
+  @media (min-width: 768px) {
+    .hidden-mobile { display: flex; }
+    .editor-pane { border-right: 1px solid #374151; }
+  }
+
+  /* エディタ */
+  #editor {
+    width: 100%; height: 100%;
+    background-color: #1e1e1e;
+    color: #d4d4d4;
+    border: none;
+    resize: none;
+    padding: 1rem;
+    font-family: monospace;
+    font-size: 14px;
+    line-height: 1.5;
+    outline: none;
+  }
+  #editor::placeholder { color: #525252; }
+
+  /* プレビュー */
+  .preview-bar {
+    background-color: #f3f4f6; color: #6b7280;
+    padding: 0.25rem 1rem; font-size: 0.75rem;
+    border-bottom: 1px solid #d1d5db;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .preview-dots { display: flex; gap: 4px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; }
+  iframe { width: 100%; height: 100%; border: none; background: white; }
+
+  /* --- モバイル用タブバー --- */
+  .tab-bar {
+    display: flex;
+    background-color: #1f2937;
+    border-top: 1px solid #374151;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  @media (min-width: 768px) { .tab-bar { display: none; } }
+  
+  .tab-btn {
+    flex: 1;
+    padding: 0.75rem;
+    background: none; border: none;
+    color: #9ca3af;
+    display: flex; align-items: center; justify-content: center;
+    gap: 0.5rem;
+    font-size: 0.875rem;
+  }
+  .tab-btn.active { color: #60a5fa; background-color: #374151; }
+
+  /* --- ガイドモーダル --- */
+  #installGuide {
+    display: none;
+    position: absolute;
+    top: 4rem; right: 1rem;
+    background-color: #1f2937;
+    border: 1px solid #4b5563;
+    border-radius: 0.5rem;
+    padding: 1rem;
+    width: 280px;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+    z-index: 50;
+  }
+  .guide-header { display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-weight: bold; }
+  .guide-list { list-style: decimal inside; color: #d1d5db; font-size: 0.875rem; line-height: 1.6; }
+
+  /* 隠し要素 */
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+  <!-- ヘッダー -->
+  <header>
+    <div class="app-title">
+      <svg class="icon" viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
+      <!-- メディアクエリによる非表示を解除し、常時表示に変更 -->
+      <span>iPad HTML Editor</span>
+    </div>
+
+    <div class="file-input-group">
+      <svg class="icon" style="width:1rem;height:1rem;color:#9ca3af" viewBox="0 0 24 24"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+      <input type="text" id="fileNameInput" value="index.html">
+    </div>
+
+    <div class="btn-group">
+      <input type="file" id="fileInput" accept=".html,.htm,.txt" class="hidden">
+      <button class="btn" onclick="document.getElementById('fileInput').click()" title="開く">
+        <svg class="icon" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+        <!-- メディアクエリによる非表示を解除し、常時表示に変更 -->
+        <span>開く</span>
+      </button>
+      <button class="btn btn-primary" onclick="saveFile()" title="保存">
+        <svg class="icon" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+        <!-- メディアクエリによる非表示を解除し、常時表示に変更 -->
+        <span>保存</span>
+      </button>
+      <button class="btn btn-icon-only" onclick="toggleGuide()" title="アプリ化">
+        <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- ガイドモーダル -->
+  <div id="installGuide">
+    <div class="guide-header">
+      <span>アプリとして使うには</span>
+      <span style="cursor:pointer" onclick="toggleGuide()">✕</span>
+    </div>
+    <ol class="guide-list">
+      <li>Safariの<span style="display:inline-block;padding:0 4px;background:#374151;border-radius:4px">共有</span>ボタンをタップ</li>
+      <li>メニューから<b>「ホーム画面に追加」</b>を選択</li>
+      <li>アイコンから起動すると全画面アプリになります</li>
+    </ol>
+  </div>
+
+  <!-- ツールバー -->
+  <div class="toolbar">
+    <div class="toolbar-left" id="toolbarLeft">
+      <!-- ここにショートカットや検索結果が入る -->
+    </div>
+    <div class="toolbar-right">
+      <svg class="icon search-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+      <input type="text" id="searchInput" placeholder="検索 (検索結果は左側に表示されます)" autocomplete="off">
+      <svg class="icon clear-icon hidden" id="clearSearchBtn" onclick="clearSearch()" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+    </div>
+  </div>
+
+  <!-- メインエリア -->
+  <div class="main-area">
+    <div id="editorPane" class="editor-pane">
+      <textarea id="editor" spellcheck="false" autocapitalize="none" autocomplete="off" autocorrect="off" placeholder="ここにHTMLコードを入力してください..."></textarea>
+    </div>
+    <div id="previewPane" class="preview-pane hidden-mobile">
+      <div class="preview-bar">
+        <span>Browser Preview</span>
+        <div class="preview-dots">
+          <div class="dot" style="background:#f87171"></div>
+          <div class="dot" style="background:#facc15"></div>
+          <div class="dot" style="background:#4ade80"></div>
+        </div>
+      </div>
+      <iframe id="previewFrame"></iframe>
+    </div>
+  </div>
+
+  <!-- モバイルタブ -->
+  <div class="tab-bar">
+    <button class="tab-btn active" id="tabCode" onclick="switchTab('editor')">
+      <svg class="icon" viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
+      コード
+    </button>
+    <button class="tab-btn" id="tabPreview" onclick="switchTab('preview')">
+      <svg class="icon" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+      プレビュー
+    </button>
+  </div>
+
+<script>
+// --- データ ---
+const TAG_DATABASE = [
+  // 構造
+  { label: '骨組み', code: '<!DOCTYPE html>\n<html lang="ja">\n<head>\n  <meta charset="UTF-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n  <title>Document</title>\n</head>\n<body>\n  \n</body>\n</html>', desc: '基本構造', keywords: ['html','template','雛形','きほん','ほねぐみ','どだい','ほ','き','ど','て'], offset: -16 },
+  { label: 'タイトル', code: '<title></title>', desc: 'タブ名', keywords: ['title','head','名前','たいとる','た','だいめい','だ'], offset: -8 },
+  { label: 'CSS読込', code: '<link rel="stylesheet" href="style.css">', desc: '外部CSS', keywords: ['link','css','style','外部','よみこみ','りんく','し','り','よ'], offset: 0 },
+  { label: 'JS読込', code: '<script src="script.js"><\/script>', desc: '外部JS', keywords: ['script','js','src','外部','よみこみ','すくりぷと','す','じ'], offset: 0 },
+  { label: 'メタ(スマホ)', code: '<meta name="viewport" content="width=device-width, initial-scale=1.0">', desc: 'スマホ対応', keywords: ['meta','viewport','mobile','スマホ','すまほ','め','す','れ'], offset: 0 },
+  // セクション
+  { label: '区画(div)', code: '<div class=""></div>', desc: 'ブロック要素', keywords: ['div','block','box','箱','でぃぶ','はこ','くかく','で','ぶ','は','く'], offset: -6 },
+  { label: '範囲(span)', code: '<span></span>', desc: '行内要素', keywords: ['span','inline','範囲','すぱん','はんい','す','は'], offset: -7 },
+  { label: 'ヘッダー', code: '<header>\n  \n</header>', desc: '上部', keywords: ['header','top','上','へっだー','うえ','へ','あたま','あ'], offset: -10 },
+  { label: 'フッター', code: '<footer>\n  \n</footer>', desc: '下部', keywords: ['footer','bottom','下','ふったー','した','ふ'], offset: -10 },
+  { label: 'ナビ', code: '<nav>\n  \n</nav>', desc: 'メニュー', keywords: ['nav','menu','リンク集','なび','めにゅー','もくじ','りんく','な','め','も','り'], offset: -7 },
+  { label: 'メイン', code: '<main>\n  \n</main>', desc: '主要内容', keywords: ['main','body','主要','めいん','ほんぶん','しゅよう','め','ほ','し'], offset: -8 },
+  // テキスト
+  { label: '見出し1', code: '<h1></h1>', desc: '大見出し', keywords: ['h1','title','大','みだし','み','だい','たいとる','た'], offset: -5 },
+  { label: '見出し2', code: '<h2></h2>', desc: '中見出し', keywords: ['h2','中','みだし','み','ちゅう','ち'], offset: -5 },
+  { label: '見出し3', code: '<h3></h3>', desc: '小見出し', keywords: ['h3','小','みだし','み','しょう','し'], offset: -5 },
+  { label: '段落', code: '<p></p>', desc: '文章', keywords: ['p','text','文章','だんらく','だ','ぶん','てきすと','て'], offset: -4 },
+  { label: '改行', code: '<br>', desc: '改行', keywords: ['br','break','改行','かいぎょう','か'], offset: 0 },
+  { label: '水平線', code: '<hr>', desc: '線', keywords: ['hr','line','線','すいへいせん','せん','くぎり','す','せ','く'], offset: 0 },
+  { label: 'リンク', code: '<a href=""></a>', desc: 'リンク', keywords: ['a','link','href','移動','りんく','り','いどう','い','え'], offset: -6 },
+  // リスト
+  { label: 'リスト(点)', code: '<ul>\n  <li></li>\n</ul>', desc: '箇条書き', keywords: ['ul','li','list','箇条書き','点','りすと','かじょうがき','てん','り','か','て','ゆ'], offset: -11 },
+  { label: 'リスト(数)', code: '<ol>\n  <li></li>\n</ol>', desc: '番号付き', keywords: ['ol','li','list','番号','順序','りすと','ばんごう','じゅんじょ','り','ば','じ','お'], offset: -11 },
+  { label: '項目(li)', code: '<li></li>', desc: 'リスト項目', keywords: ['li','item','項目','こうもく','こ','りすと','り','え'], offset: -5 },
+  // 表
+  { label: '表', code: '<table border="1">\n  <tr>\n    <th>見出し</th>\n    <td>データ</td>\n  </tr>\n</table>', desc: 'テーブル', keywords: ['table','表','ひょう','ひ','てーぶる','て'], offset: -60 },
+  { label: '行(tr)', code: '<tr></tr>', desc: '行', keywords: ['tr','row','行','ぎょう','よこ','ぎ','よ','ろ'], offset: -5 },
+  { label: '見出しセル', code: '<th></th>', desc: '太字セル', keywords: ['th','head','見出し','みだし','せる','み','せ'], offset: -5 },
+  { label: 'データセル', code: '<td></td>', desc: '通常セル', keywords: ['td','data','中身','でーた','せる','なかみ','で','せ','な'], offset: -5 },
+  // メディア
+  { label: '画像', code: '<img src="" alt="">', desc: '画像', keywords: ['img','image','photo','写真','がぞう','が','しゃしん','し','い'], offset: -9 },
+  { label: '動画', code: '<video src="" controls width="300"></video>', desc: '動画', keywords: ['video','movie','動画','どうが','ど','む'], offset: -34 },
+  { label: '音声', code: '<audio src="" controls></audio>', desc: '音声', keywords: ['audio','sound','音楽','おんせい','お','おと'], offset: -23 },
+  { label: '埋め込み', code: '<iframe src=""></iframe>', desc: 'YouTube等', keywords: ['iframe','embed','map','埋め込み','うめこみ','う','ちず','ち'], offset: -11 },
+  // フォーム
+  { label: 'フォーム', code: '<form action="">\n  \n</form>', desc: '送信枠', keywords: ['form','post','送信','ふぉーむ','そうしん','ふ','そ'], offset: -10 },
+  { label: '入力(文字)', code: '<input type="text" placeholder="">', desc: 'テキスト', keywords: ['input','text','入力','にゅうりょく','に','もじ','も','てきすと','て'], offset: -2 },
+  { label: 'テキストエリア', code: '<textarea rows="4"></textarea>', desc: '複数行', keywords: ['textarea','multiline','感想','てきすとえりあ','て','ふくすう','ふ'], offset: -11 },
+  { label: 'ボタン', code: '<button type="button"></button>', desc: 'ボタン', keywords: ['button','btn','押し','ぼたん','ぼ','おす','お'], offset: -9 },
+  // その他
+  { label: 'スタイル', code: '<style>\n  \n</style>', desc: 'CSS記述', keywords: ['style','css','装飾','すたいる','す','いろ','い','そうしょく','そ'], offset: -9 },
+  { label: 'スクリプト', code: '<script>\n  \n<\/script>', desc: 'JS記述', keywords: ['script','js','動き','すくりぷと','す','うごき','う'], offset: -10 },
+  { label: 'クラス', code: 'class=""', desc: '属性', keywords: ['class','属性','くらす','く','なまえ','な'], offset: -1 },
+  { label: 'ID', code: 'id=""', desc: '属性', keywords: ['id','属性','あいでぃー','あい','あ'], offset: -1 }
+];
+const QUICK_CHARS = ['<', '>', '/', '=', '"', "'", '{', '}', 'class=""', 'div'];
+
+// --- 初期化 ---
+const editor = document.getElementById('editor');
+const previewFrame = document.getElementById('previewFrame');
+const searchInput = document.getElementById('searchInput');
+const toolbarLeft = document.getElementById('toolbarLeft');
+const clearSearchBtn = document.getElementById('clearSearchBtn');
+
+// 初期コード（空欄にする）
+editor.value = '';
+
+// --- 機能 ---
+
+// プレビュー更新
+function updatePreview() {
+  const code = editor.value;
+  previewFrame.srcdoc = code;
+}
+editor.addEventListener('input', updatePreview);
+// 初回実行
+updatePreview();
+
+// テキスト挿入
+function insertText(text, offset = 0) {
+  const start = editor.selectionStart;
+  const end = editor.selectionEnd;
+  const val = editor.value;
+  
+  editor.value = val.substring(0, start) + text + val.substring(end);
+  
+  // カーソル位置調整
+  editor.focus();
+  const newPos = start + text.length + offset;
+  editor.setSelectionRange(newPos, newPos);
+  
+  updatePreview();
+}
+
+// ツールバー描画
+function renderToolbar(items, isSearchResult = false) {
+  toolbarLeft.innerHTML = '';
+  
+  if (items.length === 0) {
+    const span = document.createElement('span');
+    span.style.color = '#6b7280';
+    span.style.fontSize = '0.875rem';
+    span.textContent = '見つかりません';
+    toolbarLeft.appendChild(span);
+    return;
+  }
+
+  items.forEach(item => {
+    const btn = document.createElement('button');
+    btn.className = isSearchResult ? 'tag-btn' : 'btn tag-btn'; // スタイル調整
+    btn.style.fontSize = isSearchResult ? '0.875rem' : '1.125rem'; // クイック文字は大きく
+    
+    if (isSearchResult) {
+      // タグ検索結果の場合
+      const codeSpan = document.createElement('span');
+      codeSpan.textContent = item.code.replace(/\n/g, '').split('>')[0] + '>';
+      codeSpan.style.fontWeight = 'bold';
+      
+      const descSpan = document.createElement('span');
+      descSpan.className = 'tag-desc';
+      descSpan.textContent = item.label;
+      
+      btn.appendChild(codeSpan);
+      btn.appendChild(descSpan);
+      btn.onclick = () => insertText(item.code, item.offset);
+      btn.title = item.desc;
+    } else {
+      // クイック文字の場合
+      btn.textContent = item;
+      btn.style.color = '#93c5fd';
+      btn.onclick = () => insertText(item);
+    }
+    
+    toolbarLeft.appendChild(btn);
+  });
+}
+
+// 初期ツールバー（クイック文字）
+renderToolbar(QUICK_CHARS, false);
+
+// 検索機能
+function filterTags(query) {
+  if (!query) return null;
+  const lower = query.toLowerCase();
+  return TAG_DATABASE.filter(tag => 
+    tag.label.includes(query) || 
+    tag.code.toLowerCase().includes(lower) ||
+    tag.desc.includes(query) ||
+    (tag.keywords && tag.keywords.some(k => k.toLowerCase().includes(lower)))
+  );
+}
+
+searchInput.addEventListener('input', (e) => {
+  const query = e.target.value;
+  if (query) {
+    clearSearchBtn.classList.remove('hidden');
+    const results = filterTags(query);
+    renderToolbar(results, true);
+  } else {
+    clearSearchBtn.classList.add('hidden');
+    renderToolbar(QUICK_CHARS, false);
+  }
+});
+
+function clearSearch() {
+  searchInput.value = '';
+  clearSearchBtn.classList.add('hidden');
+  renderToolbar(QUICK_CHARS, false);
+  searchInput.focus();
+}
+
+// 保存
+function saveFile() {
+  const code = editor.value;
+  const fileName = document.getElementById('fileNameInput').value || 'index.html';
+  const blob = new Blob([code], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName.endsWith('.html') ? fileName : fileName + '.html';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// 読み込み
+document.getElementById('fileInput').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (file) {
+    document.getElementById('fileNameInput').value = file.name;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      editor.value = e.target.result;
+      updatePreview();
+    };
+    reader.readAsText(file);
+  }
+});
+
+// タブ切り替え（モバイル）
+function switchTab(tab) {
+  const editorPane = document.getElementById('editorPane');
+  const previewPane = document.getElementById('previewPane');
+  const tabCode = document.getElementById('tabCode');
+  const tabPreview = document.getElementById('tabPreview');
+
+  if (tab === 'editor') {
+    editorPane.classList.remove('hidden-mobile'); // モバイルでも表示
+    previewPane.classList.add('hidden-mobile');   // モバイルで隠す
+    // PCでは両方表示のままにするため、CSSメディアクエリの hidden-mobile クラスのみを操作する設計
+    // ただしJSでclassを強制操作するとPC表示が崩れる可能性があるため、style.displayで制御
+    if (window.innerWidth < 768) {
+        editorPane.style.display = 'flex';
+        previewPane.style.display = 'none';
+    }
+    tabCode.classList.add('active');
+    tabPreview.classList.remove('active');
+  } else {
+    if (window.innerWidth < 768) {
+        editorPane.style.display = 'none';
+        previewPane.style.display = 'flex';
+    }
+    tabCode.classList.remove('active');
+    tabPreview.classList.add('active');
+  }
+}
+
+// リサイズ時の表示補正
+window.addEventListener('resize', () => {
+    if (window.innerWidth >= 768) {
+        document.getElementById('editorPane').style.display = 'flex';
+        document.getElementById('previewPane').style.display = 'flex';
+    } else {
+        // 現在のアクティブタブに従う
+        const isEditorActive = document.getElementById('tabCode').classList.contains('active');
+        if (isEditorActive) {
+            document.getElementById('editorPane').style.display = 'flex';
+            document.getElementById('previewPane').style.display = 'none';
+        } else {
+            document.getElementById('editorPane').style.display = 'none';
+            document.getElementById('previewPane').style.display = 'flex';
+        }
+    }
+});
+
+// ガイド切り替え
+function toggleGuide() {
+  const guide = document.getElementById('installGuide');
+  guide.style.display = guide.style.display === 'block' ? 'none' : 'block';
+}
+
+// アイコン自動生成 (Canvas)
+window.addEventListener('load', () => {
+    const existingIcon = document.querySelector('link[rel="apple-touch-icon"]');
+    if (!existingIcon) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 512;
+      canvas.height = 512;
+      const ctx = canvas.getContext('2d');
+      // 背景
+      ctx.fillStyle = '#1f2937';
+      ctx.fillRect(0, 0, 512, 512);
+      // 文字
+      ctx.fillStyle = '#60a5fa';
+      ctx.font = 'bold 300px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('>_', 256, 256);
+      
+      const link = document.createElement('link');
+      link.rel = 'apple-touch-icon';
+      link.href = canvas.toDataURL('image/png');
+      document.head.appendChild(link);
+    }
+});
+</script>
+</body>
+</html>
